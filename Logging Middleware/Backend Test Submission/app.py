@@ -3,7 +3,10 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, AnyHttpUrl
 from datetime import datetime, timedelta
 import string, random
-# from logging import log,stack,level
+from sys import path as sys_path
+import os
+sys_path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from custom_logging import log, stack, level
 
 app = FastAPI()
 memory_store={}
@@ -33,18 +36,18 @@ async def shorten_url(req: short_req):
         "created_at": datetime.utcnow()
     }
     click_stats[code] = []
-    # Logging can be added here if needed
+    await log(stack.backend, level.info, "controller", f"Short URL created: {code}")
     return short_res(shortcode=code, expiry=expiry_time)
 
 @app.get("/{code}")
 async def redirect(code: str, request: Request):
     data = memory_store.get(code)
     if not data:
-        # Logging can be added here if needed
+        await log(stack.backend, level.error, "route", f"Shortcode not found: {code}")
         raise HTTPException(status_code=404, detail="Shortcode not found")
 
     if datetime.utcnow() > data["expiry"]:
-        # Logging can be added here if needed
+        await log(stack.backend, level.warn, "route", f"Expired code accessed: {code}")
         raise HTTPException(status_code=410, detail="Link expired")
 
     click_stats[code].append({
@@ -53,17 +56,17 @@ async def redirect(code: str, request: Request):
         "ip": request.client.host
     })
 
-    # Logging can be added here if needed
+    await log(stack.backend, level.info, "route", f"Redirected: {code}")
     return RedirectResponse(url=data["original_url"], status_code=307)
 
 @app.get("/shorturls/{code}")
 async def get_stats(code: str):
     if code not in memory_store:
-        # Logging can be added here if needed
+        await log(stack.backend, level.error, "controller", f"Stats requested for invalid code: {code}")
         raise HTTPException(status_code=404, detail="Shortcode not found")
 
     data = memory_store[code]
-    # Logging can be added here if needed
+    await log(stack.backend, level.debug, "controller", f"Stats retrieved for: {code}")
     return {
         "clicks": len(click_stats[code]),
         "createdAt": data["created_at"],
